@@ -9,6 +9,10 @@ import { useState } from "react";
  * in the header, mobile menu, footer and intro splash. Nothing is generated;
  * if the file is missing, a plain text fallback is shown instead.
  */
+// Native aspect ratio of public/logo.png (389×160). The artwork fills only about 58%
+// of that height, so the box height is set larger than the visible mark.
+const LOGO_ASPECT = 389 / 160;
+
 export function LogoMark({ size = 32, className = "" }: { size?: number; className?: string }) {
   const [missing, setMissing] = useState(false);
 
@@ -30,7 +34,7 @@ export function LogoMark({ size = 32, className = "" }: { size?: number; classNa
       src="/logo.png"
       alt="IES"
       className={`h-auto w-auto shrink-0 object-contain ${className}`}
-      style={{ height: size, width: size * 2.8 }}
+      style={{ height: size, width: size * LOGO_ASPECT }}
       onError={() => setMissing(true)}
     />
   );
@@ -39,7 +43,7 @@ export function LogoMark({ size = 32, className = "" }: { size?: number; classNa
 export default function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <Link href="/" className="group flex min-w-0 items-center gap-3" aria-label="International Estimating home">
-      <LogoMark size={compact ? 24 : 29} />
+      <LogoMark size={compact ? 46 : 52} />
       <span className="flex min-w-0 flex-col leading-none">
         <span className={`whitespace-nowrap font-display font-bold tracking-tight text-ink ${compact ? "text-[13px]" : "text-[15px] md:text-[16px]"}`}>
           International Estimating

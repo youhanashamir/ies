@@ -38,12 +38,16 @@ export default function Header() {
     <>
       <header className={`print-hide fixed inset-x-0 top-0 z-[100] transition-colors duration-300 ${scrolled || open ? "nav-glass" : "bg-bg"}`}>
         <div className="container-ie flex h-[70px] items-center justify-between gap-3 md:h-[78px]">
-          <div className="hidden min-w-0 sm:block">
-            <Logo />
-          </div>
+          {/* Phones: mark only. Tablets: full logo at a size that leaves room for the buttons. Desktop: full logo. */}
           <Link href="/" aria-label="International Estimating home" className="flex shrink-0 items-center sm:hidden">
-            <LogoMark size={25} className="shrink-0" />
+            <LogoMark size={48} className="shrink-0" />
           </Link>
+          <div className="hidden min-w-0 sm:block lg:hidden">
+            <Logo size={50} />
+          </div>
+          <div className="hidden min-w-0 lg:block">
+            <Logo size={52} />
+          </div>
 
           <nav className="hidden items-center lg:flex" aria-label="Primary navigation">
             <div className="flex items-center gap-5 text-[13px] font-semibold">

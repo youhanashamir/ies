@@ -40,10 +40,10 @@ export function LogoMark({ size = 32, className = "" }: { size?: number; classNa
   );
 }
 
-export default function Logo({ compact = false }: { compact?: boolean }) {
+export default function Logo({ compact = false, size }: { compact?: boolean; size?: number }) {
   return (
     <Link href="/" className="group flex min-w-0 items-center gap-3" aria-label="International Estimating home">
-      <LogoMark size={compact ? 46 : 52} />
+      <LogoMark size={size ?? (compact ? 46 : 52)} />
       <span className="flex min-w-0 flex-col leading-none">
         <span className={`whitespace-nowrap font-display font-bold tracking-tight text-ink ${compact ? "text-[13px]" : "text-[15px] md:text-[16px]"}`}>
           International Estimating

@@ -162,14 +162,16 @@ export function generateRequestId() {
 }
 
 export function parseArea(value: string) {
-  const amount = parseFloat(String(value).replace(/,/g, ""));
+  const trimmed = String(value).replace(/,/g, "").trim();
+  if (!trimmed) return 0;
+  const amount = Number(trimmed); // strict: rejects trailing text such as "12abc"
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
 }
 
 export function requestedBudgetLabel(value: string, currency = "USD") {
   const amount = Number(String(value).replace(/,/g, ""));
   const selectedCurrency = CURRENCIES.includes(currency) ? currency : "USD";
-  if (!String(value).trim() || !Number.isFinite(amount) || amount < 0) return "Not provided";
+  if (!String(value).trim() || !Number.isFinite(amount) || amount <= 0) return "Not provided";
 
   const formatted = new Intl.NumberFormat("en-US", {
     style: "currency",

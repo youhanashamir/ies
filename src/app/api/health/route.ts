@@ -2,14 +2,13 @@ import { mailConfig } from "@/lib/mailer";
 
 export const dynamic = "force-dynamic";
 
+// Public endpoint: reports only whether mail is configured, never the addresses themselves.
 export async function GET() {
-  const mail = mailConfig();
+  const { configured } = mailConfig();
   return Response.json({
     ok: true,
     service: "international-estimating",
-    mailConfigured: mail.configured,
-    mailSender: mail.from,
-    mailRecipient: mail.to,
+    mailConfigured: configured,
     time: new Date().toISOString(),
   });
 }

@@ -42,8 +42,7 @@ import {
 } from "@/lib/calculator";
 import EmailDraftDialog from "@/components/ui/EmailDraftDialog";
 import type { EmailDraft } from "@/lib/email-draft";
-
-const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "internationalestimatingservice@gmail.com";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 
 const MAX_PLAN_FILE_BYTES = 15 * 1024 * 1024;
@@ -167,6 +166,8 @@ export default function BidForm() {
   const [copied, setCopied] = useState(false);
   const [draftId, setDraftId] = useState("");
   const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
+  // Honeypot: hidden from people; bots tend to fill every field.
+  const [website, setWebsite] = useState("");
   const bidIdRef = useRef("");
   const planInputRef = useRef<HTMLInputElement>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
@@ -282,7 +283,7 @@ export default function BidForm() {
       const form = new FormData();
       form.append("bid_id", id);
       form.append("state", JSON.stringify(state));
-      form.append("summaryText", buildSummaryText(state, id));
+      form.append("website", website);
       plans.forEach((file) => form.append("plans", file, file.name));
 
       const response = await fetch("/api/bid-request", { method: "POST", body: form });
@@ -329,6 +330,13 @@ export default function BidForm() {
     scrollTo("project-details");
   };
 
+  const honeypot = (
+    <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+      <label htmlFor="website">Website</label>
+      <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} />
+    </div>
+  );
+
   const printableSlip = (
     <div className="print-only print-slip mx-auto max-w-3xl bg-white p-6 text-black">
       <p className="eyebrow">International Estimating — Bid Submission Slip</p>
@@ -370,6 +378,7 @@ export default function BidForm() {
 
   return (
     <>
+      {honeypot}
       <p className="print-hide mb-5 text-[13px] text-muted"><span className="mr-1 text-red-400">*</span>Fields marked with an asterisk are required before a bid request can be prepared.</p>
       <div className="print-hide space-y-6">
         <FormSection number="01" id="project-details" title="Client & Project Details" description="Tell us who you are and upload the working plans required for review.">

@@ -5,12 +5,18 @@ import { ArrowUpRight, CheckCircle2, Mail, Paperclip, TriangleAlert, X } from "l
 import { generateRequestId } from "@/lib/calculator";
 import EmailDraftDialog from "@/components/ui/EmailDraftDialog";
 import type { EmailDraft } from "@/lib/email-draft";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
-type InquiryResult = { inquiryId: string; delivered: boolean; clientNotified: boolean; configured: boolean };
+type InquiryResult = {
+  inquiryId: string;
+  delivered: boolean;
+  clientNotified: boolean;
+  configured: boolean;
+  status: "sent" | "delivery-failed" | "not-configured" | "unknown";
+};
 type FieldErrors = Partial<Record<"fullName" | "email" | "subject" | "question" | "attachment" | "form", string>>;
 
 const MAX_BYTES = 5 * 1024 * 1024;
-const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "internationalestimatingservice@gmail.com";
 
 function FieldShell({
   id,
@@ -120,17 +126,23 @@ export default function InquiryForm() {
     setLastPayload(payload);
     try {
       const response = await fetch("/api/inquiry", { method: "POST", body: data });
-      const json = (await response.json()) as { ok?: boolean; error?: string; inquiryId?: string; delivered?: boolean; clientNotified?: boolean; configured?: boolean };
+      const json = (await response.json()) as { ok?: boolean; error?: string; inquiryId?: string; delivered?: boolean; clientNotified?: boolean; configured?: boolean; status?: InquiryResult["status"] };
       if (!response.ok || !json.ok) throw new Error(json.error || "Submission failed. You can still use Open Prepared Email.");
       const confirmedId = json.inquiryId ?? inquiryId;
       setLastPayload({
         subject: `[${confirmedId}] ${subject}`,
         body: payload.body.replace(`Inquiry ID: ${inquiryId}`, `Inquiry ID: ${confirmedId}`),
       });
-      setResult({ inquiryId: confirmedId, delivered: Boolean(json.delivered), clientNotified: Boolean(json.clientNotified), configured: Boolean(json.configured) });
+      setResult({
+        inquiryId: confirmedId,
+        delivered: Boolean(json.delivered),
+        clientNotified: Boolean(json.clientNotified),
+        configured: Boolean(json.configured),
+        status: json.status ?? "unknown",
+      });
     } catch (error) {
+      // Stay on the form so the user sees the real error and can retry or use the prepared email.
       setErrors({ form: error instanceof Error ? error.message : "Submission failed. You can still use Open Prepared Email." });
-      setResult({ inquiryId, delivered: false, clientNotified: false, configured: false });
     }
   };
 
@@ -151,7 +163,9 @@ export default function InquiryForm() {
           <p className="mt-3 text-[13.5px] leading-relaxed text-muted">
             {result.delivered
               ? "You and our team both received this inquiry with the same Inquiry ID. We will reply to the email you provided."
-              : "Automatic email is not configured on this deployment. Open the prepared email below, attach any listed file manually, and send it to International Estimating. Keep this ID for future replies."}
+              : result.status === "delivery-failed"
+                ? "We could not deliver your inquiry automatically. Open the prepared email below and send it to International Estimating. Keep this ID for future replies."
+                : "Automatic email is not available right now. Open the prepared email below, attach any listed file manually, and send it to International Estimating. Keep this ID for future replies."}
           </p>
           <ul className="mt-4 space-y-1.5 text-[13px] text-muted">
             <li>• Company notified: {result.delivered ? "Yes" : "No (use prepared email)"}</li>
@@ -173,7 +187,13 @@ export default function InquiryForm() {
   const fieldClass = (field: keyof FieldErrors) => `field ${errors[field] ? "!border-red-400" : ""}`;
 
   return (
+    <>
     <form ref={formRef} onSubmit={onSubmit} className="border hairline bg-surface/70 p-6 md:p-8" noValidate>
+      {/* Honeypot: hidden from people and screen readers; bots tend to fill it in. */}
+      <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+        <label htmlFor="website">Website</label>
+        <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
+      </div>
       <p className="mb-5 text-[13px] text-muted"><span className="mr-1 text-red-400">*</span>Required fields must be completed before an inquiry can be prepared.</p>
       <div className="grid gap-5 sm:grid-cols-2">
         <FieldShell id="fullName" label="Full Name" required error={errors.fullName}>
@@ -201,8 +221,15 @@ export default function InquiryForm() {
       {errors.form && <p role="alert" className="mt-5 border-l-4 border-red-400 bg-red-500/10 px-4 py-3 text-[13px] font-medium text-red-700">{errors.form}</p>}
       <div className="mt-7 flex flex-wrap items-center justify-between gap-4 border-t hairline pt-5">
         <p className="text-[12.5px] text-muted">Your details are prepared locally. Use the email draft to send your inquiry; attach any selected file manually.</p>
-        <button type="submit" className="btn-primary"><ArrowUpRight size={15} />Prepare Inquiry Email</button>
+        <div className="flex flex-wrap gap-3">
+          {errors.form && lastPayload && (
+            <button type="button" onClick={() => openPreparedEmail(lastPayload)} className="btn-ghost"><Mail size={14} /> Open Prepared Email</button>
+          )}
+          <button type="submit" className="btn-primary"><ArrowUpRight size={15} />Prepare Inquiry Email</button>
+        </div>
       </div>
     </form>
+    <EmailDraftDialog draft={emailDraft} onClose={() => setEmailDraft(null)} />
+    </>
   );
 }

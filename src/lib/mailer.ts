@@ -30,13 +30,15 @@ export type SendMailResult =
 export function mailConfig() {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const to = process.env.CONTACT_TO_EMAIL?.trim();
-  const from = process.env.CONTACT_FROM_EMAIL?.trim() || "International Estimating <onboarding@resend.dev>";
-  return { apiKey, to, from, configured: Boolean(apiKey && to) };
+  const from = process.env.CONTACT_FROM_EMAIL?.trim();
+  // Requires a verified sender. The Resend test sender (onboarding@resend.dev) only
+  // delivers to the account owner, so falling back to it would silently drop client emails.
+  return { apiKey, to, from, configured: Boolean(apiKey && to && from) };
 }
 
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
   const { apiKey, from } = mailConfig();
-  if (!apiKey) return { delivered: false, reason: "not-configured" };
+  if (!apiKey || !from) return { delivered: false, reason: "not-configured" };
 
   try {
     const res = await fetch("https://api.resend.com/emails", {

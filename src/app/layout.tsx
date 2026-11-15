@@ -35,7 +35,10 @@ export const metadata: Metadata = {
     description: SITE.description,
   },
   robots: { index: true, follow: true },
-  icons: { icon: "/logo.png" },
+  icons: {
+    icon: [{ url: "/favicon.png", type: "image/png", sizes: "160x160" }],
+    apple: "/favicon.png",
+  },
 };
 
 export const viewport: Viewport = {

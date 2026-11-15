@@ -22,7 +22,7 @@ export default function Hero() {
         <p className="hero-in eyebrow eyebrow-dot mb-7 !text-white/85" style={{ animationDelay: "0.05s" }}>
           International Estimating · Worldwide
         </p>
-        <h1 className="display-h1 max-w-[12ch] text-balance !text-white">
+        <h1 className="display-h1 w-full text-balance !text-white md:w-[40%]">
           <span className="hero-line">
             <span style={{ animationDelay: "0.1s" }}>Accurate Takeoffs.</span>
           </span>
@@ -36,7 +36,7 @@ export default function Hero() {
           </span>
         </h1>
         <div className="mt-7 flex flex-col gap-7 md:mt-9 md:flex-row md:items-end md:justify-between">
-          <p className="hero-in max-w-xl text-pretty text-[17px] leading-relaxed text-white/80 md:text-[19px]" style={{ animationDelay: "0.45s" }}>
+          <p className="hero-in w-full text-pretty text-[17px] leading-relaxed text-white/80 md:w-[40%] md:text-[19px]" style={{ animationDelay: "0.45s" }}>
             We provide professional electrical and MEP estimating services to contractors and construction professionals
             worldwide. Our goal is to simplify your bidding process with accurate quantities, detailed cost breakdowns,
             and reliable estimating support.

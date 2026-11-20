@@ -138,7 +138,7 @@ export async function POST(req: Request) {
   }
 
   if (!configured) {
-    console.warn(`[inquiry] ${inquiryId} received but email is not configured (RESEND_API_KEY, CONTACT_TO_EMAIL, CONTACT_FROM_EMAIL).`);
+    console.warn(`[inquiry] ${inquiryId} received but email is not configured (set SMTP_HOST/SMTP_USER/SMTP_PASS or RESEND_API_KEY + CONTACT_FROM_EMAIL).`);
   } else if (error) {
     console.error(`[inquiry] ${inquiryId} delivery issue: ${error}`);
   }

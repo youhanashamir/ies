@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import JsonLd from "@/components/seo/JsonLd";
+import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import CtaBand from "@/components/home/CtaBand";
@@ -7,11 +9,12 @@ import SectionHeading from "@/components/ui/SectionHeading";
 import { IMAGES, PAGE_HEROES, POLICIES, SERVICES, SPECIALIZATION } from "@/lib/content";
 import PageHero from "@/components/ui/PageHero";
 
-export const metadata: Metadata = {
-  title: "About Us",
+export const metadata: Metadata = pageMetadata({
+  title: "About Our Electrical & MEP Estimators",
   description:
-    "International Estimating provides professional electrical takeoffs, complete electrical cost estimating, and MEP estimating services worldwide — accurate, drawing-based quantities and detailed cost breakdowns.",
-};
+    "Meet International Estimating: remote electrical and MEP estimators delivering accurate takeoffs and bid-ready cost estimates for US and international contractors.",
+  path: "/about",
+});
 
 const STATS = [
   { value: "3", label: "Core estimating services" },
@@ -23,6 +26,7 @@ const STATS = [
 export default function AboutPage() {
   return (
     <>
+      <JsonLd data={breadcrumbJsonLd("/about")} />
       <PageHero
         eyebrow="About International Estimating"
         title={<>The numbers behind <span className="serif-accent !text-[#e4dcff]">competitive bids.</span></>}

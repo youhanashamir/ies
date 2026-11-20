@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Check } from "lucide-react";
 import Hero from "@/components/home/Hero";
@@ -5,7 +6,16 @@ import CtaBand from "@/components/home/CtaBand";
 import Marquee from "@/components/ui/Marquee";
 import Photo from "@/components/ui/Photo";
 import SectionHeading from "@/components/ui/SectionHeading";
+import { pageMetadata } from "@/lib/seo";
 import { IMAGES, POLICIES, PROCESS, REASONS, SECTORS, SERVICES, SPECIALIZATION, SYSTEMS } from "@/lib/content";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Electrical & MEP Estimating Services for US Contractors",
+  absoluteTitle: true,
+  description:
+    "Electrical estimating, electrical takeoff, and MEP estimating services for US contractors. Upload your plans and get accurate quantities and bid-ready estimates.",
+  path: "/",
+});
 
 export default function HomePage() {
   return (
@@ -60,7 +70,7 @@ export default function HomePage() {
             {SERVICES.map((s, i) => (
               <article key={s.slug} className="reveal" style={{ transitionDelay: `${i * 90}ms` }}>
                 <Link
-                  href={`/services#${s.slug}`}
+                  href={`/services/${s.slug}`}
                   className="card-surface tilt-hover group flex h-full flex-col overflow-hidden"
                 >
                   <Photo

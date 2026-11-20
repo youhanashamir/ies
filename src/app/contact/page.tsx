@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import JsonLd from "@/components/seo/JsonLd";
+import { breadcrumbJsonLd, faqJsonLd, pageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { ArrowUpRight, Mail, Plus, ShieldCheck } from "lucide-react";
 import InquiryForm from "@/components/ask/InquiryForm";
@@ -7,16 +9,19 @@ import SectionHeading from "@/components/ui/SectionHeading";
 import { FAQS, IMAGES, PAGE_HEROES } from "@/lib/content";
 import PageHero from "@/components/ui/PageHero";
 
-export const metadata: Metadata = {
-  title: "Contact Us",
+export const metadata: Metadata = pageMetadata({
+  title: "Contact Our Estimating Team",
   description:
-    "Contact International Estimating about electrical or MEP estimating, turnaround, or scope. Send us a message and continue the conversation by email.",
-};
+    "Questions about electrical or MEP estimating, scope, fees, or deadlines? Contact International Estimating and get a reply by email from our estimating team.",
+  path: "/contact",
+});
 
 
 export default function ContactPage() {
   return (
     <>
+      <JsonLd data={breadcrumbJsonLd("/contact")} />
+      <JsonLd data={faqJsonLd()} />
       <PageHero
         eyebrow="Contact Us · Direct communication"
         title={<>Questions about <span className="serif-accent !text-[#e4dcff]">scope or timing?</span></>}

@@ -1,12 +1,22 @@
 /**
- * Resend mailer (server-side only).
+ * Server-side mailer. Two transports are supported; whichever is configured is used.
  *
- * Required environment variables:
- *   RESEND_API_KEY       — Resend API key (starts with re_)
- *   CONTACT_FROM_EMAIL   — verified sender, e.g. "International Estimating <bids@yourdomain.com>"
- *   CONTACT_TO_EMAIL     — company inbox that receives all submissions
- *   NEXT_PUBLIC_CONTACT_EMAIL — same inbox, exposed to the browser for mailto buttons
+ * Option A: SMTP (e.g. Gmail with an App Password)
+ *   SMTP_HOST            e.g. smtp.gmail.com
+ *   SMTP_PORT            465 (SSL, default) or 587 (STARTTLS)
+ *   SMTP_USER            full mailbox address
+ *   SMTP_PASS            app password (not the normal account password)
+ *
+ * Option B: Resend (https://resend.com), used when RESEND_API_KEY is set
+ *   RESEND_API_KEY       starts with re_
+ *   CONTACT_FROM_EMAIL   required: a sender on a domain verified in Resend
+ *
+ * Shared:
+ *   CONTACT_TO_EMAIL     inbox that receives submissions (defaults to the public contact email)
+ *   CONTACT_FROM_EMAIL   sender, e.g. "International Estimating <you@gmail.com>" (SMTP defaults to SMTP_USER)
  */
+import nodemailer from "nodemailer";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 export type MailAttachment = {
   filename: string;
@@ -27,28 +37,85 @@ export type SendMailResult =
   | { delivered: true; id: string }
   | { delivered: false; reason: "not-configured" | "error"; error?: string };
 
+/**
+ * Upper bound for the base64 attachment payload of one message. Gmail rejects
+ * messages over 25 MB (including encoding), so larger plan sets are split
+ * across several emails by `batchAttachments`.
+ */
+export const MAX_ATTACHMENT_BASE64_PER_EMAIL = 21 * 1024 * 1024;
+
+const env = (key: string) => process.env[key]?.trim() || undefined;
+
 export function mailConfig() {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const to = process.env.CONTACT_TO_EMAIL?.trim();
-  const from = process.env.CONTACT_FROM_EMAIL?.trim();
-  // Requires a verified sender. The Resend test sender (onboarding@resend.dev) only
-  // delivers to the account owner, so falling back to it would silently drop client emails.
-  return { apiKey, to, from, configured: Boolean(apiKey && to && from) };
+  const apiKey = env("RESEND_API_KEY");
+  const smtpHost = env("SMTP_HOST");
+  const smtpUser = env("SMTP_USER");
+  const smtpPass = env("SMTP_PASS")?.replace(/\s+/g, "");
+  const smtpPort = Number(env("SMTP_PORT") ?? 465);
+  const smtpReady = Boolean(smtpHost && smtpUser && smtpPass);
+
+  const transport: "resend" | "smtp" | null = apiKey ? "resend" : smtpReady ? "smtp" : null;
+  const to = env("CONTACT_TO_EMAIL") ?? CONTACT_EMAIL;
+  // Resend needs an explicitly verified sender; its test sender only delivers to the
+  // account owner, so falling back to it would silently drop client emails.
+  const from =
+    env("CONTACT_FROM_EMAIL") ?? (transport === "smtp" ? `International Estimating <${smtpUser}>` : undefined);
+
+  return {
+    transport,
+    apiKey,
+    smtp: { host: smtpHost, port: smtpPort, user: smtpUser, pass: smtpPass },
+    to,
+    from,
+    configured: Boolean(transport && to && from),
+  };
+}
+
+let smtpTransporter: nodemailer.Transporter | null = null;
+
+function getSmtpTransporter(smtp: ReturnType<typeof mailConfig>["smtp"]) {
+  if (!smtpTransporter) {
+    smtpTransporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.port === 465,
+      auth: { user: smtp.user, pass: smtp.pass },
+    });
+  }
+  return smtpTransporter;
 }
 
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
-  const { apiKey, from } = mailConfig();
-  if (!apiKey || !from) return { delivered: false, reason: "not-configured" };
+  const config = mailConfig();
+  if (!config.configured || !config.from) return { delivered: false, reason: "not-configured" };
 
   try {
+    if (config.transport === "smtp") {
+      const info = await getSmtpTransporter(config.smtp).sendMail({
+        from: config.from,
+        to: input.to,
+        subject: input.subject,
+        html: input.html,
+        text: input.text,
+        replyTo: input.replyTo,
+        attachments: input.attachments?.map((a) => ({
+          filename: a.filename,
+          content: a.content,
+          encoding: "base64",
+          contentType: a.filename.toLowerCase().endsWith(".pdf") ? "application/pdf" : undefined,
+        })),
+      });
+      return { delivered: true, id: info.messageId ?? "sent" };
+    }
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from,
+        from: config.from,
         to: input.to,
         subject: input.subject,
         html: input.html,
@@ -71,6 +138,24 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
   } catch (err) {
     return { delivered: false, reason: "error", error: err instanceof Error ? err.message : "Unknown error" };
   }
+}
+
+/** Groups attachments so each email stays under the provider's message size limit. */
+export function batchAttachments(attachments: MailAttachment[], maxBase64 = MAX_ATTACHMENT_BASE64_PER_EMAIL) {
+  const batches: MailAttachment[][] = [];
+  let current: MailAttachment[] = [];
+  let size = 0;
+  for (const attachment of attachments) {
+    if (current.length && size + attachment.content.length > maxBase64) {
+      batches.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(attachment);
+    size += attachment.content.length;
+  }
+  if (current.length) batches.push(current);
+  return batches;
 }
 
 /* ------------------------------------------------------------------ */

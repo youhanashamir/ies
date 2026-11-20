@@ -43,10 +43,62 @@ import {
 import EmailDraftDialog from "@/components/ui/EmailDraftDialog";
 import type { EmailDraft } from "@/lib/email-draft";
 import { CONTACT_EMAIL } from "@/lib/contact";
+import { CHUNK_BYTES, MAX_PLAN_FILE_BYTES, MAX_PLAN_FILES, MAX_PLAN_TOTAL_BYTES } from "@/lib/plan-upload-limits";
 
 
-const MAX_PLAN_FILE_BYTES = 15 * 1024 * 1024;
-const MAX_PLAN_TOTAL_BYTES = 25 * 1024 * 1024;
+
+/** Reads a JSON API response, turning proxy/CDN HTML error pages into a readable error. */
+async function readJson<T>(response: Response): Promise<T & { ok?: boolean; error?: string }> {
+  try {
+    return (await response.json()) as T & { ok?: boolean; error?: string };
+  } catch {
+    if (response.status === 413) return { ok: false, error: "The upload was too large for the server. Please reduce the PDF size and try again." } as T & { ok?: boolean; error?: string };
+    return { ok: false, error: `The server could not process the request (error ${response.status}). Please try again or use Prepare Email.` } as T & { ok?: boolean; error?: string };
+  }
+}
+
+/**
+ * Uploads every plan in small chunks so no single request exceeds the hosting
+ * CDN's body size limit. Returns the upload ID the bid submission refers to.
+ */
+async function uploadPlansInChunks(plans: File[], onProgress: (fraction: number) => void) {
+  const uploadId = crypto.randomUUID().replace(/-/g, "");
+  const totalBytes = plans.reduce((sum, file) => sum + file.size, 0) || 1;
+  let sentBytes = 0;
+  const manifest = [];
+
+  for (const [fileIndex, file] of plans.entries()) {
+    const chunks = Math.ceil(file.size / CHUNK_BYTES);
+    for (let chunkIndex = 0; chunkIndex < chunks; chunkIndex += 1) {
+      const blob = file.slice(chunkIndex * CHUNK_BYTES, (chunkIndex + 1) * CHUNK_BYTES);
+      const body = new FormData();
+      body.append("uploadId", uploadId);
+      body.append("fileIndex", String(fileIndex));
+      body.append("chunkIndex", String(chunkIndex));
+      body.append("chunk", blob, `${fileIndex}-${chunkIndex}.part`);
+
+      let lastError = "";
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await fetch("/api/bid-upload", { method: "POST", body });
+          const data = await readJson<object>(response);
+          if (response.ok && data.ok) { lastError = ""; break; }
+          lastError = data.error || "Upload failed.";
+          if (response.status !== 429 && response.status < 500) break;
+        } catch {
+          lastError = "Network error while uploading your PDF plans. Please check your connection and try again.";
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+      if (lastError) throw new Error(`${file.name}: ${lastError}`);
+
+      sentBytes += blob.size;
+      onProgress(sentBytes / totalBytes);
+    }
+    manifest.push({ name: file.name, size: file.size, chunks });
+  }
+  return { uploadId, manifest };
+}
 
 type SubmitResult = {
   id: string;
@@ -162,6 +214,7 @@ export default function BidForm() {
   const [plans, setPlans] = useState<File[]>([]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [draftId, setDraftId] = useState("");
@@ -211,6 +264,11 @@ export default function BidForm() {
       return;
     }
     const combined = [...plans, ...incoming].filter((file, index, all) => all.findIndex((item) => item.name === file.name && item.size === file.size) === index);
+    if (combined.length > MAX_PLAN_FILES) {
+      setErrors((current) => ({ ...current, plans: `Please upload ${MAX_PLAN_FILES} PDF files or fewer. Combine sheets into fewer PDFs if needed.` }));
+      scrollTo("project-details");
+      return;
+    }
     if (combined.reduce((total, file) => total + file.size, 0) > MAX_PLAN_TOTAL_BYTES) {
       setErrors((current) => ({ ...current, plans: "Combined PDF size cannot exceed 25 MB." }));
       scrollTo("project-details");
@@ -284,10 +342,16 @@ export default function BidForm() {
       form.append("bid_id", id);
       form.append("state", JSON.stringify(state));
       form.append("website", website);
-      plans.forEach((file) => form.append("plans", file, file.name));
+      if (!website) {
+        setUploadProgress(0);
+        const upload = await uploadPlansInChunks(plans, setUploadProgress);
+        form.append("uploadId", upload.uploadId);
+        form.append("plans_manifest", JSON.stringify(upload.manifest));
+      }
+      setUploadProgress(null);
 
       const response = await fetch("/api/bid-request", { method: "POST", body: form });
-      const data = (await response.json()) as { ok?: boolean; error?: string; requestId?: string; delivered?: boolean; clientNotified?: boolean; configured?: boolean; receivedAt?: string };
+      const data = await readJson<{ requestId?: string; delivered?: boolean; clientNotified?: boolean; configured?: boolean; receivedAt?: string }>(response);
       if (!response.ok || !data.ok) throw new Error(data.error || "Submission failed. Please use Prepare Email instead.");
 
       bidIdRef.current = data.requestId ?? id;
@@ -305,6 +369,7 @@ export default function BidForm() {
       scrollTo("review");
     } finally {
       setSubmitting(false);
+      setUploadProgress(null);
     }
   };
 
@@ -340,7 +405,7 @@ export default function BidForm() {
   const printableSlip = (
     <div className="print-only print-slip mx-auto max-w-3xl bg-white p-6 text-black">
       <p className="eyebrow">International Estimating — Bid Submission Slip</p>
-      <h1 className="mt-2 text-2xl font-bold">{state.projectName || "Untitled project"}</h1>
+      <p className="mt-2 text-2xl font-bold">{state.projectName || "Untitled project"}</p>
       <pre className="mt-6 whitespace-pre-wrap font-sans text-[12px] leading-relaxed">{summary}</pre>
       {plans.length > 0 && <p className="mt-4 text-[12px]">PDF plans: {plans.map((file) => file.name).join(", ")}</p>}
     </div>
@@ -445,7 +510,7 @@ export default function BidForm() {
         <FormSection number="05" id="review" title="Review & Submit Project" description="Review your request. The requested budget is not final pricing; our team confirms final fixed pricing after review.">
           <div className="border hairline bg-bg/50 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><p className="font-display text-[18px] font-bold">{state.projectName || "Untitled project"}</p><span className="mono-num border border-accent/50 px-3 py-1 text-[12px] text-accent-ink">{draftId || "Bid ID assigned on submit"}</span></div><dl className="mt-4 divide-y divide-line text-[13px]"><div className="grid grid-cols-[150px_1fr] gap-3 py-2"><dt className="text-muted">Client</dt><dd>{state.clientName || "—"}</dd></div><div className="grid grid-cols-[150px_1fr] gap-3 py-2"><dt className="text-muted">Service</dt><dd>{serviceLabel(state.service)}</dd></div><div className="grid grid-cols-[150px_1fr] gap-3 py-2"><dt className="text-muted">Requested budget</dt><dd>{requestedBudgetLabel(state.requestedBudget, state.requestedBudgetCurrency)}</dd></div><div className="grid grid-cols-[150px_1fr] gap-3 py-2"><dt className="text-muted">PDF plans</dt><dd>{plans.length ? plans.map((file) => file.name).join(", ") : "Required — not selected"}</dd></div><div className="grid grid-cols-[150px_1fr] gap-3 py-2"><dt className="text-muted">Preferred deadline</dt><dd>{deadlineLabel(state.deadline)}</dd></div></dl></div>
           {errors.submit && <p role="alert" className="mt-4 border-l-4 border-red-400 bg-red-500/10 px-4 py-3 text-[13px] font-medium text-red-700">{errors.submit}</p>}
-          <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={copySummary} className="btn-ghost">{copied ? <ClipboardCheck size={15} /> : <Clipboard size={15} />}{copied ? "Copied" : "Copy Summary"}</button><button type="button" onClick={printBidSlip} className="btn-ghost"><FileDown size={15} />Print Bid Slip</button><button type="button" onClick={() => openPreparedEmail()} className="btn-ghost"><Mail size={15} />Prepare Email</button><button type="button" onClick={submit} disabled={submitting} className="btn-primary">{submitting ? <Loader2 size={15} className="animate-spin" /> : <ArrowUpRight size={15} />}{submitting ? "Sending…" : "Submit Bid Request"}</button></div>
+          <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={copySummary} className="btn-ghost">{copied ? <ClipboardCheck size={15} /> : <Clipboard size={15} />}{copied ? "Copied" : "Copy Summary"}</button><button type="button" onClick={printBidSlip} className="btn-ghost"><FileDown size={15} />Print Bid Slip</button><button type="button" onClick={() => openPreparedEmail()} className="btn-ghost"><Mail size={15} />Prepare Email</button><button type="button" onClick={submit} disabled={submitting} className="btn-primary">{submitting ? <Loader2 size={15} className="animate-spin" /> : <ArrowUpRight size={15} />}{submitting ? (uploadProgress !== null ? `Uploading plans… ${Math.round(uploadProgress * 100)}%` : "Sending…") : "Submit Bid Request"}</button></div>
         </FormSection>
       </div>
       {printableSlip}

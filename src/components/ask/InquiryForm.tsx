@@ -126,7 +126,7 @@ export default function InquiryForm() {
     setLastPayload(payload);
     try {
       const response = await fetch("/api/inquiry", { method: "POST", body: data });
-      const json = (await response.json()) as { ok?: boolean; error?: string; inquiryId?: string; delivered?: boolean; clientNotified?: boolean; configured?: boolean; status?: InquiryResult["status"] };
+      const json = (await response.json().catch(() => ({ ok: false, error: `The server could not process the request (error ${response.status}). You can still use Open Prepared Email.` }))) as { ok?: boolean; error?: string; inquiryId?: string; delivered?: boolean; clientNotified?: boolean; configured?: boolean; status?: InquiryResult["status"] };
       if (!response.ok || !json.ok) throw new Error(json.error || "Submission failed. You can still use Open Prepared Email.");
       const confirmedId = json.inquiryId ?? inquiryId;
       setLastPayload({

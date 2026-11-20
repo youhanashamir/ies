@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
+import JsonLd from "@/components/seo/JsonLd";
+import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { PAGE_HEROES } from "@/lib/content";
 import PageHero from "@/components/ui/PageHero";
 
-export const metadata: Metadata = {
-  title: "Terms",
-  description: "Terms for International Estimating estimating services.",
-};
+export const metadata: Metadata = pageMetadata({
+  title: "Terms of Service",
+  description:
+    "Service terms for International Estimating: estimating scope, pricing and payment, assumptions and exclusions, confidentiality of drawings, delivery timing, and client review.",
+  path: "/terms",
+});
 
 const TERMS = [
   {
@@ -39,6 +43,7 @@ const TERMS = [
 export default function TermsPage() {
   return (
     <>
+      <JsonLd data={breadcrumbJsonLd("/terms")} />
       <PageHero
         eyebrow="International Estimating"
         title={<>Service <span className="serif-accent !text-[#e4dcff]">Terms.</span></>}

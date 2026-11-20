@@ -3,7 +3,7 @@ export const SITE = {
   shortName: "IE",
   tagline: "Accurate Takeoffs. Reliable Estimates. Confident Bids.",
   description:
-    "Professional electrical and MEP estimating services for contractors and construction professionals worldwide. Drawing-based quantity takeoffs, detailed cost breakdowns, and bid-ready estimates.",
+    "Electrical estimating, electrical takeoff, and MEP estimating services for contractors across the United States and worldwide. Drawing-based quantities, detailed cost breakdowns, and bid-ready estimates.",
   closing: "Your Project. Our Precision. Your Competitive Edge.",
 };
 

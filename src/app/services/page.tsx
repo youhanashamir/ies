@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import JsonLd from "@/components/seo/JsonLd";
+import { breadcrumbJsonLd, pageMetadata, servicesJsonLd } from "@/lib/seo";
 import Link from "next/link";
-import { ArrowUpRight, Check } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check } from "lucide-react";
 import CtaBand from "@/components/home/CtaBand";
 import Photo from "@/components/ui/Photo";
 import SectionHeading from "@/components/ui/SectionHeading";
@@ -8,11 +10,20 @@ import Marquee from "@/components/ui/Marquee";
 import { IMAGES, PAGE_HEROES, PROCESS, QUANTITY_BREAKDOWN, SERVICES, SPECIALIZATION, SYSTEMS } from "@/lib/content";
 import PageHero from "@/components/ui/PageHero";
 
-export const metadata: Metadata = {
-  title: "Services & Specializations",
+export const metadata: Metadata = pageMetadata({
+  title: "Electrical Estimating, Takeoff & MEP Services",
   description:
-    "Electrical takeoffs & counts, complete electrical cost estimating, and comprehensive MEP estimating — drawing-based quantities and bid-ready cost breakdowns for contractors worldwide.",
-};
+    "Electrical takeoff services, electrical estimating, and MEP estimating for US contractors: drawing-based quantities and bid-ready cost breakdowns from your plans.",
+  path: "/services",
+  keywords: [
+    "electrical takeoff services",
+    "electrical cost estimating",
+    "MEP estimating services",
+    "lighting fixture counts",
+    "conduit and wire takeoff",
+    "mechanical and plumbing estimating",
+  ],
+});
 
 const GROUPS: { key: string; label: string; ids: string[] }[] = [
   { key: "electrical", label: "Electrical", ids: SYSTEMS.filter((s) => s.group === "electrical").map((s) => s.id) },
@@ -23,6 +34,8 @@ const GROUPS: { key: string; label: string; ids: string[] }[] = [
 export default function ServicesPage() {
   return (
     <>
+      <JsonLd data={breadcrumbJsonLd("/services")} />
+      <JsonLd data={servicesJsonLd()} />
       <PageHero
         eyebrow="Our services & specializations"
         title={<>Counted. Priced. <span className="serif-accent !text-[#e4dcff]">Bid-ready.</span></>}
@@ -66,8 +79,8 @@ export default function ServicesPage() {
                   <Link href="/submit-bid" className="btn-primary">
                     Request this service <ArrowUpRight size={15} />
                   </Link>
-                  <Link href="/contact" className="btn-ghost">
-                    Ask about scope
+                  <Link href={`/services/${s.slug}`} className="btn-ghost">
+                    {s.title} details <ArrowRight size={15} />
                   </Link>
                 </div>
               </div>

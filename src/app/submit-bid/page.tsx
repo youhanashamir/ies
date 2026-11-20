@@ -1,17 +1,22 @@
 import type { Metadata } from "next";
+import JsonLd from "@/components/seo/JsonLd";
+import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { CircleAlert, FileText, ShieldCheck } from "lucide-react";
 import BidForm from "@/components/bid/BidForm";
 import PageHero from "@/components/ui/PageHero";
 import { PAGE_HEROES } from "@/lib/content";
 
-export const metadata: Metadata = {
-  title: "Submit a Project",
-  description: "Submit project plans, estimating service requirements, preferred deadline, and requested budget for International Estimating review.",
-};
+export const metadata: Metadata = pageMetadata({
+  title: "Submit Plans for an Electrical or MEP Estimate",
+  description:
+    "Upload your PDF plans, choose electrical takeoff, electrical estimating, or MEP estimating, and set your bid deadline. We confirm a fixed fee before work begins.",
+  path: "/submit-bid",
+});
 
 export default function SubmitProjectPage() {
   return (
     <>
+      <JsonLd data={breadcrumbJsonLd("/submit-bid")} />
       <PageHero
         eyebrow="International Estimating · Submit a Project"
         title={<>Submit your project for review.</>}

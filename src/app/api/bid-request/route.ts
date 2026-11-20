@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { bidIdBanner, mailConfig, row, section, sendMail, wrapHtml, type MailAttachment } from "@/lib/mailer";
+import { batchAttachments, bidIdBanner, mailConfig, row, section, sendMail, wrapHtml, type MailAttachment } from "@/lib/mailer";
 import {
   breakdownLabel,
   deadlineLabel,
@@ -11,15 +11,23 @@ import {
   systemLabel,
   type BidFormState,
 } from "@/lib/calculator";
-import { isPdfContent, isValidBidId, validateBidState } from "@/lib/bid-validation";
+import { isValidBidId, validateBidState } from "@/lib/bid-validation";
 import { allowRequest, clientIp } from "@/lib/rate-limit";
+import {
+  MAX_PLAN_FILE_BYTES,
+  MAX_PLAN_TOTAL_BYTES,
+  deleteUpload,
+  isValidUploadId,
+  parseManifest,
+  readUploadedPlans,
+} from "@/lib/plan-uploads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_PLAN_FILE_BYTES = 15 * 1024 * 1024;
-const MAX_PLAN_TOTAL_BYTES = 25 * 1024 * 1024;
 // Plans plus form fields and multipart overhead. Checked before the body is buffered.
+// Plans normally arrive pre-uploaded in chunks (see /api/bid-upload), so this only
+// matters for direct uploads.
 const MAX_REQUEST_BYTES = MAX_PLAN_TOTAL_BYTES + 1024 * 1024;
 const RATE_LIMIT = 5;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
@@ -94,23 +102,61 @@ export async function POST(req: Request) {
   if (!validated.ok) return json({ ok: false, error: validated.error }, 400);
   const state = validated.state;
 
-  const planFiles = form.getAll("plans").filter((value): value is File => value instanceof File && value.size > 0);
-  if (planFiles.length === 0) {
-    return json({ ok: false, error: "At least one PDF project plan is required. Upload working, building, electrical, MEP, or structural plans." }, 400);
+  const uploadId = String(form.get("uploadId") ?? "");
+  try {
+    const plans = await collectPlans(form, uploadId);
+    if (!plans.ok) return json({ ok: false, error: plans.error }, plans.status);
+    return await handleBid(form, state, plans.files);
+  } finally {
+    if (isValidUploadId(uploadId)) await deleteUpload(uploadId);
   }
-  if (planFiles.some((file) => file.size > MAX_PLAN_FILE_BYTES)) {
-    return json({ ok: false, error: "Each PDF plan file must be 15 MB or smaller." }, 413);
-  }
-  if (planFiles.reduce((total, file) => total + file.size, 0) > MAX_PLAN_TOTAL_BYTES) {
-    return json({ ok: false, error: "The combined PDF plan upload must be 25 MB or smaller." }, 413);
-  }
-  for (const file of planFiles) {
-    const looksLikePdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-    if (!looksLikePdf || !(await isPdfContent(file))) {
-      return json({ ok: false, error: `“${file.name}” is not a valid PDF. Only PDF plan files can be submitted.` }, 400);
+}
+
+type PlanFile = { name: string; data: Buffer };
+type PlansResult = { ok: true; files: PlanFile[] } | { ok: false; error: string; status: number };
+
+const isPdfBuffer = (data: Buffer) => data.subarray(0, 5).toString("latin1") === "%PDF-";
+
+/** Plans come from the chunked upload store (normal path) or directly in the form. */
+async function collectPlans(form: FormData, uploadId: string): Promise<PlansResult> {
+  let files: PlanFile[];
+
+  if (uploadId) {
+    if (!isValidUploadId(uploadId)) return { ok: false, error: "Invalid upload. Please submit again.", status: 400 };
+    let rawManifest: unknown;
+    try {
+      rawManifest = JSON.parse(String(form.get("plans_manifest") ?? ""));
+    } catch {
+      return { ok: false, error: "Missing PDF plan details. Please submit again.", status: 400 };
     }
+    const manifest = parseManifest(rawManifest);
+    if (!manifest.ok) return { ok: false, error: manifest.error, status: 400 };
+    const stored = await readUploadedPlans(uploadId, manifest.manifest);
+    if (!stored.ok) return { ok: false, error: stored.error, status: 400 };
+    files = stored.files;
+  } else {
+    const planFiles = form.getAll("plans").filter((value): value is File => value instanceof File && value.size > 0);
+    if (planFiles.length === 0) {
+      return { ok: false, error: "At least one PDF project plan is required. Upload working, building, electrical, MEP, or structural plans.", status: 400 };
+    }
+    if (planFiles.some((file) => file.size > MAX_PLAN_FILE_BYTES)) {
+      return { ok: false, error: "Each PDF plan file must be 15 MB or smaller.", status: 413 };
+    }
+    if (planFiles.reduce((total, file) => total + file.size, 0) > MAX_PLAN_TOTAL_BYTES) {
+      return { ok: false, error: "The combined PDF plan upload must be 25 MB or smaller.", status: 413 };
+    }
+    files = await Promise.all(planFiles.map(async (file) => ({ name: file.name, data: Buffer.from(await file.arrayBuffer()) })));
   }
 
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith(".pdf") || !isPdfBuffer(file.data)) {
+      return { ok: false, error: `“${file.name}” is not a valid PDF. Only PDF plan files can be submitted.`, status: 400 };
+    }
+  }
+  return { ok: true, files };
+}
+
+async function handleBid(form: FormData, state: BidFormState, planFiles: PlanFile[]) {
   const submittedId = String(form.get("bid_id") ?? "").trim();
   const bidId = isValidBidId(submittedId) ? submittedId : generateRequestId();
 
@@ -118,15 +164,16 @@ export async function POST(req: Request) {
   const area = parseArea(state.area);
   const systems = state.systems.length ? state.systems.map((id) => systemLabel(id)).join(", ") : "—";
   const planNames = planFiles.map((file) => file.name);
-  const attachments: MailAttachment[] = await Promise.all(
-    planFiles.map(async (file) => ({ filename: file.name, content: Buffer.from(await file.arrayBuffer()).toString("base64") })),
-  );
+  const attachments: MailAttachment[] = planFiles.map((file) => ({ filename: file.name, content: file.data.toString("base64") }));
+  // Large plan sets are split across several emails to stay under provider size limits.
+  const batches = batchAttachments(attachments);
+  const partNote = batches.length > 1 ? ` The PDF plans are split across ${batches.length} emails because of their size.` : "";
   const fullText = projectText(state, bidId, planNames);
   const footnote = "Client requested budgets are not final quotations. We review the bid, drawings, and scope before providing final fixed pricing. Keep your Bid ID for any future change request.";
 
   const internalDetails = `
     ${bidIdBanner(bidId)}
-    <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#374151">A new bid request has been submitted with PDF plans attached. Reply directly to the client email to continue.</p>
+    <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#374151">A new bid request has been submitted with PDF plans attached.${partNote} Reply directly to the client email to continue.</p>
     ${section("Client", [row("Name", state.clientName), row("Company", state.companyName), row("Email", state.email), row("Phone", state.phone)].join(""))}
     ${section("Project & plans", [
       row("Project", state.projectName),
@@ -172,15 +219,43 @@ export async function POST(req: Request) {
   let error: string | undefined;
 
   if (configured && companyEmail) {
+    const partSubject = (index: number) => (batches.length > 1 ? ` (plans ${index + 1} of ${batches.length})` : "");
+    const sendCompanyEmails = async () => {
+      // Sequential so the parts arrive in order and SMTP isn't hit with parallel large messages.
+      const results = [];
+      for (const [index, batch] of batches.entries()) {
+        const names = batch.map((a) => a.filename);
+        results.push(
+          await sendMail(
+            index === 0
+              ? {
+                  to: companyEmail,
+                  replyTo: state.email,
+                  subject: `[${bidId}] New bid request — ${state.projectName}${partSubject(index)}`,
+                  html: wrapHtml(`New bid request — ${state.projectName}`, internalDetails, footnote),
+                  text: fullText,
+                  attachments: batch,
+                }
+              : {
+                  to: companyEmail,
+                  replyTo: state.email,
+                  subject: `[${bidId}] PDF plans — ${state.projectName}${partSubject(index)}`,
+                  html: wrapHtml(
+                    `PDF plans, part ${index + 1} of ${batches.length}`,
+                    `${bidIdBanner(bidId)}${section("Attached in this email", row("PDF plans", names.join(", ")))}`,
+                  ),
+                  text: `Bid ID: ${bidId}\nProject: ${state.projectName}\nPDF plans, part ${index + 1} of ${batches.length}: ${names.join(", ")}`,
+                  attachments: batch,
+                },
+          ),
+        );
+      }
+      const failed = results.find((r) => !r.delivered);
+      return failed ?? results[0];
+    };
+
     const [companyResult, clientResult] = await Promise.all([
-      sendMail({
-        to: companyEmail,
-        replyTo: state.email,
-        subject: `[${bidId}] New bid request — ${state.projectName}`,
-        html: wrapHtml(`New bid request — ${state.projectName}`, internalDetails, footnote),
-        text: fullText,
-        attachments,
-      }),
+      sendCompanyEmails(),
       sendMail({
         to: state.email,
         replyTo: companyEmail,
@@ -200,7 +275,7 @@ export async function POST(req: Request) {
   }
 
   if (!configured) {
-    console.warn(`[bid-request] ${bidId} received but email is not configured (RESEND_API_KEY, CONTACT_TO_EMAIL, CONTACT_FROM_EMAIL).`);
+    console.warn(`[bid-request] ${bidId} received but email is not configured (set SMTP_HOST/SMTP_USER/SMTP_PASS or RESEND_API_KEY + CONTACT_FROM_EMAIL).`);
   } else if (error) {
     console.error(`[bid-request] ${bidId} delivery issue: ${error}`);
   }

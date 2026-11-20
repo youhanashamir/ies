@@ -1,17 +1,22 @@
 import type { Metadata } from "next";
+import JsonLd from "@/components/seo/JsonLd";
+import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { PAGE_HEROES, POLICIES } from "@/lib/content";
 import PageHero from "@/components/ui/PageHero";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Company Policies",
-  description: "International Estimating company policies: accuracy, safety, confidentiality, transparency, timely delivery, client satisfaction, and fair pricing.",
-};
+  description:
+    "International Estimating company policies: accuracy, safety, confidentiality, transparency, timely delivery, client satisfaction, and fair pricing.",
+  path: "/policies",
+});
 
 export default function PoliciesPage() {
   return (
     <>
+      <JsonLd data={breadcrumbJsonLd("/policies")} />
       <PageHero
         eyebrow="International Estimating"
         title={<>Company <span className="serif-accent !text-[#e4dcff]">Policies.</span></>}

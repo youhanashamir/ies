@@ -20,7 +20,7 @@ export default function Hero() {
 
       <div className="container-ie relative z-10 flex min-h-[690px] flex-col justify-end pb-12 pt-16 md:min-h-[742px] md:pb-16 md:pt-20 lg:pb-20">
         <p className="hero-in eyebrow eyebrow-dot mb-7 !text-white/85" style={{ animationDelay: "0.05s" }}>
-          International Estimating · Worldwide
+          Electrical &amp; MEP Estimating Services · USA &amp; Worldwide
         </p>
         <h1 className="display-h1 w-full text-balance !text-white md:w-[40%]">
           <span className="hero-line">
@@ -37,9 +37,9 @@ export default function Hero() {
         </h1>
         <div className="mt-7 flex flex-col gap-7 md:mt-9 md:flex-row md:items-end md:justify-between">
           <p className="hero-in w-full text-pretty text-[17px] leading-relaxed text-white/80 md:w-[40%] md:text-[19px]" style={{ animationDelay: "0.45s" }}>
-            We provide professional electrical and MEP estimating services to contractors and construction professionals
-            worldwide. Our goal is to simplify your bidding process with accurate quantities, detailed cost breakdowns,
-            and reliable estimating support.
+            We provide electrical takeoffs, electrical estimating, and MEP estimating services to contractors across the
+            United States and worldwide. Our goal is to simplify your bidding process with accurate quantities, detailed
+            cost breakdowns, and reliable estimating support.
           </p>
           <div className="hero-in flex flex-wrap gap-3" style={{ animationDelay: "0.55s" }}>
             <Link href="/submit-bid" className="btn-accent">
